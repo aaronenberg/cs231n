@@ -29,7 +29,6 @@ For efficiency, update rules may perform in-place updates, mutating w and
 setting next_w equal to w.
 """
 
-
 def sgd(w, dw, config=None):
     """
     Performs vanilla stochastic gradient descent.
@@ -58,6 +57,7 @@ def sgd_momentum(w, dw, config=None):
     if config is None: config = {}
     config.setdefault('learning_rate', 1e-2)
     config.setdefault('momentum', 0.9)
+    config.setdefault('type')
     v = config.get('velocity', np.zeros_like(w))
 
     next_w = None
@@ -65,7 +65,18 @@ def sgd_momentum(w, dw, config=None):
     # TODO: Implement the momentum update formula. Store the updated value in #
     # the next_w variable. You should also use and update the velocity v.     #
     ###########################################################################
-    pass
+    mu = config['momentum']
+    learning_rate = config['learning_rate']
+    next_w = w
+
+    if config['type'] == 'nesterov':
+        v_prev = v
+        v = mu * v - learning_rate * dw
+        next_w += -mu * v_prev + (1 + mu) * v
+    # sgd_momentum
+    else:
+        v = mu * v - learning_rate * dw
+        next_w += v
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################

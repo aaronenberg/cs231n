@@ -175,14 +175,12 @@ class FullyConnectedNet(object):
         # parameters should be initialized to zeros.                               #
         ############################################################################
         layer_input_dim = input_dim
-        for i, hd in enumerate(hidden_dims):
-            W_key = 'W%d' %(i+1)
-            b_key = 'b%d' %(i+1)
-            self.params['W%d' %(i+1)] = np.random.randn(layer_input_dim, hidden_dims) * weight_scale
-            self.params['b%d' %(i+1)] = np.zeros(hidden_dims)
-            layer_input_dim = hidden_dims
-        self.params[W_key] = np.random.randn(layer_input_dim, num_classes) * weight_scale
-        self.params[b_key] = np.zeros(num_classes)
+        for i, hidden_dim in enumerate(hidden_dims):
+            self.params['W%d' %(i+1)] = np.random.randn(layer_input_dim, hidden_dim) * weight_scale
+            self.params['b%d' %(i+1)] = np.zeros(hidden_dim)
+            layer_input_dim = hidden_dim
+        self.params['W%d' % self.num_layers] = np.random.randn(layer_input_dim, num_classes) * weight_scale
+        self.params['b%d' % self.num_layers] = np.zeros(num_classes)
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -270,15 +268,15 @@ class FullyConnectedNet(object):
         # automated tests, make sure that your L2 regularization includes a factor #
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
+        sum_squared_weights = 0
         for hid in range(layers):
             sum_squared_weights += np.sum(self.params['W%d' % (hid+1)] * self.params['W%d' % (hid+1)])
         reg_loss = 0.5 * self.reg * sum_squared_weights 
         data_loss, dx = softmax_loss(scores, y)
         loss = data_loss + reg_loss
-        
-        dout, grads['W%d' % layers], grads['b%d' % layers] = affine_relu_backward(dx, cache[layers])
+        dout, grads['W%d' % layers], grads['b%d' % layers] = affine_backward(dx, cache[layers])
         grads['W%d' % layers] += self.reg * self.params['W%d' % layers]
-        for hid in reversed(range(layers)):
+        for hid in reversed(range(layers - 1)):
             dout, grads['W%d' % (hid+1)], grads['b%d' % (hid+1)] = affine_relu_backward(dout, cache[hid])
             grads['W%d' % (hid+1)] += self.reg * self.params['W%d' % (hid+1)]
         ############################################################################
