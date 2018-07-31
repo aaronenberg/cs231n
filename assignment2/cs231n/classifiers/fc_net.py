@@ -115,6 +115,33 @@ class TwoLayerNet(object):
         return loss, grads
 
 
+def affine_bn_relu_forward(x, w, b, gamma, beta, bn_param):
+    """
+    Convenience layer that perorms an affine transform followed by a batch normalization
+    followed by a ReLU.
+
+    Inputs:
+    - x: Input to the affine layer
+    - w, b: Weights for the affine layer
+
+    Returns a tuple of:
+    - out: Output from the ReLU
+    - cache: Object to give to the backward pass
+    """
+    a, fc_cache = affine_forward(x, w, b)
+    bn, bn_cache = batchnorm_forward(a, gamma, beta, bn_param)
+    out, relu_cache = relu_forward(bn)
+    cache = (fc_cache, bn_cache, relu_cache)
+    return out, cache
+
+def affine_bn_relu_backward(dout, cache):
+    fc_cache, bn_cache, relu_cache = cache
+    dan = relu_backward(dout, relu_cache)
+    da, dgamma, dbeta = batchnorm_backward(dan, bn_cache)
+    dx, dw, db = affine_backward(da, fc_cache)
+    return dx, dw, db, dgamma, dbeta
+
+
 class FullyConnectedNet(object):
     """
     A fully-connected neural network with an arbitrary number of hidden layers,
@@ -175,12 +202,16 @@ class FullyConnectedNet(object):
         # parameters should be initialized to zeros.                               #
         ############################################################################
         layer_input_dim = input_dim
+        layers = self.num_layers
         for i, hidden_dim in enumerate(hidden_dims):
-            self.params['W%d' %(i+1)] = np.random.randn(layer_input_dim, hidden_dim) * weight_scale
-            self.params['b%d' %(i+1)] = np.zeros(hidden_dim)
+            self.params['W%d'%(i+1)] = np.random.randn(layer_input_dim, hidden_dim) * weight_scale
+            self.params['b%d'%(i+1)] = np.zeros(hidden_dim)
+            if self.normalization=='batchnorm':
+                self.params['gamma%d' % (i+1)] = np.ones(hidden_dim)
+                self.params['beta%d' % (i+1)] = np.zeros(hidden_dim)
             layer_input_dim = hidden_dim
-        self.params['W%d' % self.num_layers] = np.random.randn(layer_input_dim, num_classes) * weight_scale
-        self.params['b%d' % self.num_layers] = np.zeros(num_classes)
+        self.params['W%d' % layers] = np.random.randn(layer_input_dim, num_classes) * weight_scale
+        self.params['b%d' % layers] = np.zeros(num_classes)
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -242,10 +273,21 @@ class FullyConnectedNet(object):
         layers = self.num_layers
         data = X
         cache = {}
+        dropout_cache = {}
         for hid in range(layers - 1):
-            data, cache[hid] = affine_relu_forward(data, self.params['W%d' % (hid+1)], self.params['b%d' % (hid+1)])
-        scores, cache[layers] = affine_forward(data, self.params['W%d' % layers], self.params['b%d' % layers])
-        
+            W, b = self.params['W%d'%(hid+1)], self.params['b%d'%(hid+1)]
+            if self.normalization=='batchnorm':
+                gamma, beta = self.params['gamma%d'%(hid+1)], self.params['beta%d'%(hid+1)] 
+                data, cache[hid] = affine_bn_relu_forward(
+                        data, W, b, gamma, beta, self.bn_params[hid])
+            else:
+                data, cache[hid] = affine_relu_forward(data, W, b)
+            if self.use_dropout:
+               data, dropout_cache[hid] = dropout_forward(data, self.dropout_param)
+        scores, cache[layers] = affine_forward(
+                data, 
+                self.params['W%d' % layers], 
+                self.params['b%d' % layers])
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -270,17 +312,30 @@ class FullyConnectedNet(object):
         ############################################################################
         sum_squared_weights = 0
         for hid in range(layers):
-            sum_squared_weights += np.sum(self.params['W%d' % (hid+1)] * self.params['W%d' % (hid+1)])
+            sum_squared_weights += np.sum((self.params['W%d' % (hid+1)])**2)
         reg_loss = 0.5 * self.reg * sum_squared_weights 
         data_loss, dx = softmax_loss(scores, y)
         loss = data_loss + reg_loss
+
         dout, grads['W%d' % layers], grads['b%d' % layers] = affine_backward(dx, cache[layers])
         grads['W%d' % layers] += self.reg * self.params['W%d' % layers]
         for hid in reversed(range(layers - 1)):
-            dout, grads['W%d' % (hid+1)], grads['b%d' % (hid+1)] = affine_relu_backward(dout, cache[hid])
+            if self.use_dropout:
+                dout = dropout_backward(dout, dropout_cache[hid])
+            if self.normalization=='batchnorm':
+                dout, \
+                grads['W%d'%(hid+1)], \
+                grads['b%d'%(hid+1)], \
+                grads['gamma%d'%(hid+1)], \
+                grads['beta%d'%(hid+1)] = affine_bn_relu_backward(dout, cache[hid])
+            else:
+                dout, \
+                grads['W%d'%(hid+1)], \
+                grads['b%d'%(hid+1)] = affine_relu_backward(dout, cache[hid])
             grads['W%d' % (hid+1)] += self.reg * self.params['W%d' % (hid+1)]
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
 
         return loss, grads
+
